@@ -43,7 +43,7 @@ private extension WeatherFetcher {
     static let scheme = "https"
     static let host = "api.openweathermap.org"
     static let path = "/data/2.5"
-    static let key = "<your key>"
+    static let key = "9cb334b473a2b798cfc08195a612622e"
   }
   
   func makeWeeklyForecastComponents(
@@ -81,4 +81,52 @@ private extension WeatherFetcher {
     
     return components
   }
+}
+
+protocol WeatherFetchable {
+	func weeklyWeatherForecast(
+		forCity city: String
+	) -> AnyPublisher<WeeklyForecastResponse, WeatherError>
+
+	func currentWeatherForecast(
+		forCity city: String
+	) -> AnyPublisher<CurrentWeatherForecastResponse, WeatherError>
+}
+
+// MARK: - WeatherFetchable
+extension WeatherFetcher: WeatherFetchable {
+	func weeklyWeatherForecast(
+		forCity city: String
+	) -> AnyPublisher<WeeklyForecastResponse, WeatherError> {
+		return forecast(with: makeWeeklyForecastComponents(withCity: city))
+	}
+
+	func currentWeatherForecast(
+		forCity city: String
+	) -> AnyPublisher<CurrentWeatherForecastResponse, WeatherError> {
+		return forecast(with: makeCurrentDayForecastComponents(withCity: city))
+	}
+
+	private func forecast<T>(
+		with components: URLComponents
+	) -> AnyPublisher<T, WeatherError> where T: Decodable {
+		// 1
+		guard let url = components.url else {
+			let error = WeatherError.network(description: "Couldn't create URL")
+			return Fail(error: error).eraseToAnyPublisher()
+		}
+
+		// 2
+		return session.dataTaskPublisher(for: URLRequest(url: url))
+			// 3
+			.mapError { error in
+				.network(description: error.localizedDescription)
+			}
+			// 4
+			.flatMap(maxPublishers: .max(1)) { pair in
+				decode(pair.data)
+			}
+			// 5
+			.eraseToAnyPublisher()
+	}
 }
